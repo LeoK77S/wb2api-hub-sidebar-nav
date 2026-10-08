@@ -9,27 +9,19 @@
  *   node verify/verify.mjs --page real      # 跑上游真实 dashboard.html（联网拉取）
  *   node verify/verify.mjs --page <路径>     # 跑指定的 dashboard.html
  *
- * 依赖：playwright-core（npm i playwright-core），以及一个 Chromium。
- * 浏览器可执行文件按此顺序解析：--chrome <路径> > 环境变量 CHROME_PATH >
- * 常见的 ms-playwright 缓存目录。
+ * 想在你自己已经跑起来的面板上验，用 verify-live.mjs。
+ * 依赖与浏览器解析规则见 lib.mjs。
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import http from 'node:http';
-import os from 'node:os';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, '..');
-const USERSCRIPT = path.join(ROOT, 'wb2api-hub-sidebar-nav.user.js');
-const FIXTURE = path.join(HERE, 'fixture.html');
-const SHOTS = path.join(HERE, 'shots');
+import {
+  FIXTURE, SHOTS, USERSCRIPT, VIEWPORT,
+  eq, parseArgs, findChrome, loadPlaywright, makeChecker, serve, dismissGate, SIDEBAR_STATE,
+} from './lib.mjs';
 
 // 上游 main 的固定提交：保证「跑的是哪一版面板」可复现
 const REAL_URL = 'https://raw.githubusercontent.com/ardeyouxipianyi/workbuddy2api-hub/'
   + '5a04d08/dashboard.html';
-
-const VIEWPORT = { width: 1440, height: 720 };
 
 /* 各页面应有的导航项 —— 由页面 HTML 静态数出来的，不是脚本自己算的，
    所以能真正发现「少一项 / 多一项 / 标题带状态数字」这类错。 */
@@ -49,71 +41,9 @@ const EXPECT = {
   },
 };
 
-/* ---- 小工具 ---- */
+const { check, report, results } = makeChecker();
 
-const results = [];
-function check(name, ok, detail){
-  results.push({ name, ok: !!ok, detail: detail === undefined ? '' : String(detail) });
-  console.log((ok ? '  PASS  ' : '  FAIL  ') + name + (ok || !detail ? '' : '\n         → ' + detail));
-}
-const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-function parseArgs(argv){
-  const out = { page: 'fixture', chrome: '' };
-  for(let i = 0; i < argv.length; i++){
-    if(argv[i] === '--page') out.page = argv[++i];
-    else if(argv[i] === '--chrome') out.chrome = argv[++i];
-  }
-  return out;
-}
-
-function findChrome(explicit){
-  const cands = [explicit, process.env.CHROME_PATH].filter(Boolean);
-  const cache = path.join(os.homedir(), 'AppData', 'Local', 'ms-playwright');
-  const linuxCache = path.join(os.homedir(), '.cache', 'ms-playwright');
-  for(const dir of [cache, linuxCache]){
-    let entries = [];
-    try { entries = fs.readdirSync(dir); } catch(e){ continue; }
-    for(const name of entries.filter(n => n.startsWith('chromium-')).sort().reverse()){
-      cands.push(path.join(dir, name, 'chrome-win64', 'chrome.exe'));
-      cands.push(path.join(dir, name, 'chrome-linux', 'chrome'));
-      cands.push(path.join(dir, name, 'chrome-linux64', 'chrome'));
-      cands.push(path.join(dir, name, 'chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'));
-    }
-    const headless = path.join(dir, entries.filter(n => n.startsWith('chromium_headless_shell-')).sort().reverse()[0] || '', 'chrome-win64', 'headless_shell.exe');
-    if(entries.some(n => n.startsWith('chromium_headless_shell-'))) cands.push(headless);
-  }
-  for(const c of cands){ if(c && fs.existsSync(c)) return c; }
-  return null;
-}
-
-async function loadPlaywright(){
-  const unwrap = m => (m && m.chromium) ? m : (m && m.default) || m;
-  try { return unwrap(await import('playwright-core')); }
-  catch(e){}
-  // 退回到本机已有的安装（不下载浏览器）
-  const guesses = [
-    path.join(os.homedir(), 'WorkSpace', 'chat', 'node_modules', 'playwright-core', 'index.js'),
-  ];
-  for(const g of guesses){
-    if(fs.existsSync(g)) return unwrap(await import(pathToFileURL(g).href));
-  }
-  throw new Error('找不到 playwright-core：请先 npm i playwright-core，或用 NODE_PATH 指向已有安装');
-}
-
-/* 起一个只读静态服务：面板在 http:// 下才用得上 localStorage 等能力 */
-function serve(files){
-  return new Promise(resolve => {
-    const server = http.createServer((req, res) => {
-      const url = new URL(req.url, 'http://localhost');
-      const file = files[url.pathname];
-      if(!file){ res.writeHead(404); res.end('not found'); return; }
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end(fs.readFileSync(file));
-    });
-    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
-  });
-}
 
 async function fetchReal(){
   const cached = path.join(SHOTS, 'dashboard-upstream.html');
@@ -125,25 +55,6 @@ async function fetchReal(){
   fs.writeFileSync(cached, await res.text());
   return cached;
 }
-
-/* ---- 页面侧的小工具（在浏览器里跑） ---- */
-
-const SIDEBAR_STATE = () => {
-  const page = document.querySelector('.main-page.active');
-  const sb = page && page.querySelector('.wbpn-sidebar');
-  return {
-    pageId: page ? page.id : null,
-    on: page ? page.classList.contains('wbpn-on') : false,
-    collapsed: page ? page.classList.contains('wbpn-collapsed') : false,
-    hasSidebar: !!sb,
-    labels: sb ? Array.from(sb.querySelectorAll('.wbpn-nav .wbpn-item')).map(b => b.textContent) : [],
-    active: sb ? (sb.querySelector('.wbpn-item.active') || {}).textContent || null : null,
-    hasTop: sb ? !!sb.querySelector('button.wbpn-top') : false,
-    hasToggle: sb ? !!sb.querySelector('button.wbpn-toggle') : false,
-    sidebarWidth: sb ? Math.round(sb.getBoundingClientRect().width) : 0,
-    navVisible: sb ? getComputedStyle(sb.querySelector('.wbpn-nav')).display !== 'none' : false,
-  };
-};
 
 async function switchTab(page, name){
   await page.click('#btnNav' + name[0].toUpperCase() + name.slice(1));
@@ -186,14 +97,9 @@ async function main(){
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForTimeout(600);
 
-  // 真实面板在没有后端时会弹出「面板密码」遮罩（#panelGate，z-index 600），
-  // 它会挡住所有点击。那层遮罩属于未登录态，不是本次要验的布局，压掉它。
-  // 用样式表 !important 才能盖过它自己的行内 display；刷新后要重新压一次。
-  const dismissGate = async () => {
-    await page.addStyleTag({ content: '#panelGate{display:none!important}' });
-    await page.waitForTimeout(80);
-  };
-  await dismissGate();
+  // 真实面板在没有后端时会弹出「面板密码」遮罩，会挡住所有点击，压掉它
+  // （刷新后要重新压一次，见 lib.mjs 的 dismissGate）
+  await dismissGate(page);
 
   console.log('\n页面：' + targetPath);
   console.log('模式：' + kind + '，浏览器：' + chrome + '\n');
@@ -276,7 +182,7 @@ async function main(){
 
   await page.reload({ waitUntil: 'load' });
   await page.waitForTimeout(600);
-  await dismissGate();
+  await dismissGate(page);
   s = await page.evaluate(SIDEBAR_STATE);
   check('刷新后仍保持收起', s.collapsed && !s.navVisible, JSON.stringify({ collapsed: s.collapsed, navVisible: s.navVisible }));
 
@@ -368,9 +274,7 @@ async function main(){
   await browser.close();
   server.close();
 
-  const failed = results.filter(r => !r.ok);
-  console.log('\n' + '='.repeat(60));
-  console.log(`共 ${results.length} 项，通过 ${results.length - failed.length}，失败 ${failed.length}`);
+  const failed = report();
   console.log('截图：' + SHOTS);
   if(pageErrors.length) console.log('（页面自身报错 ' + pageErrors.length + ' 条，多因无后端接口，仅记录）');
   process.exit(failed.length ? 1 : 0);
