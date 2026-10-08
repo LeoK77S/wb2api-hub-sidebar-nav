@@ -63,6 +63,11 @@
   border-radius:14px;padding:10px;box-shadow:var(--shadow,0 1px 3px rgba(0,0,0,.3));
   max-height:calc(100vh - var(${TOP_VAR},84px) - 20px);overflow:auto}
 .${C.head}{display:flex;align-items:center;justify-content:space-between;gap:6px}
+/* 面板往往有一条全局的 button{background:var(--accent);box-shadow:...} 与
+   button:hover{border-color:...}。那套样式是为面板自己的实心按钮写的，会漏进
+   侧栏这几个透明按钮（悬停时莫名多一圈强调色描边、无端带一层阴影）。这里把
+   它挡掉，侧栏按钮的外观只由本文件决定，换个面板也不会变样。 */
+.${C.sidebar} button{box-shadow:none;font:inherit}
 .${C.title}{font-size:11px;font-weight:700;color:var(--dim,#94a3b8);text-transform:uppercase;
   letter-spacing:.6px;padding:6px 10px 8px}
 .${C.toggle}{appearance:none;flex:0 0 auto;width:22px;height:22px;padding:0;
@@ -79,7 +84,7 @@
 .${C.item}{appearance:none;background:transparent;border:1px solid transparent;color:var(--dim,#94a3b8);
   text-align:left;padding:8px 10px;border-radius:8px;font:inherit;font-size:13px;line-height:1.35;
   cursor:pointer;transition:all .15s ease;overflow-wrap:anywhere}
-.${C.item}:hover{color:var(--fg,#f1f5f9);background:var(--panel2,#1e293b)}
+.${C.item}:hover{color:var(--fg,#f1f5f9);background:var(--panel2,#1e293b);border-color:var(--accent,#3b82f6)}
 .${C.item}.active{color:var(--fg,#f1f5f9);background:var(--panel2,#1e293b);border-color:var(--line,#1f293d);font-weight:600}
 /* 收起：整列压成一条细轨，只留展开按钮。窄屏导航本来就是一条横栏，没得收。 */
 @media (min-width:861px){
