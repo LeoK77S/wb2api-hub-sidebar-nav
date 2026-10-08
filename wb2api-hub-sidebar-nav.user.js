@@ -37,11 +37,18 @@
   const MIN_SECTIONS = 2;                 // 少于两项就不给侧栏：白占一列
   const BIND_FLAG = '__wbpnBound';        // 全局事件只绑一次
   const OBSERVE_FLAG = '__wbpnObserved';
+  /* 面板把内容区卡在 max-width:1280px。侧栏要占掉 196px 一列，内容列就只剩
+     ~974px，而面板里最宽的表（账号表）最小内容宽约 1050px —— 于是表格冒出横向
+     滚动条，右侧几列被藏起来。侧栏在场时把上限放松到能容下最宽的表即可：
+     1050(表) + 48(main 左右内边距) + 196(侧栏) + 20(栏间距) ≈ 1314，留足余量取 1800。
+     侧栏不在场时不碰这个上限，页面保持面板原样。 */
+  const WIDE_MAX = '1800px';
 
   const C = {
     on: 'wbpn-on',
     collapsed: 'wbpn-collapsed',
     body: 'wbpn-body',
+    wide: 'wbpn-wide',
     sidebar: 'wbpn-sidebar',
     head: 'wbpn-head',
     title: 'wbpn-title',
@@ -56,6 +63,10 @@
   /* 只依赖面板的 CSS 变量（--panel/--line/--fg 等），且都给了兜底值，
      所以面板换主题或删掉这些变量都不会让侧栏变成透明方块。 */
   const CSS = `
+/* 侧栏在场时放松内容区宽度上限，免得内容被挤到出横向滚动条（见 WIDE_MAX 注释）。
+   用 !important 是因为这条是刻意覆盖宿主面板的布局约束，而面板换写法就可能
+   把权重抬到我们之上。 */
+main.${C.wide}{max-width:${WIDE_MAX}!important}
 .main-page.${C.on}.active{display:grid;grid-template-columns:196px minmax(0,1fr);gap:20px;align-items:start}
 .main-page.${C.on} > *{grid-column:2;min-width:0}
 .main-page.${C.on} > .${C.sidebar}{grid-column:1;grid-row:1 / -1;position:sticky;
@@ -298,11 +309,18 @@
     body.remove();
   }
 
+  /* 侧栏在场时给内容容器加宽，撤走时还原（见 WIDE_MAX 注释） */
+  function syncWide(page, wide){
+    const main = page.closest('main') || page.parentElement;
+    if(main) main.classList.toggle(C.wide, !!wide);
+  }
+
   function standDown(page){
     const own = page.querySelector('.' + C.sidebar);
     if(own) own.remove();
     unwrap(page);
     page.classList.remove(C.on, C.collapsed);
+    syncWide(page, false);
     delete page.dataset.wbpnSignature;
   }
 
@@ -311,17 +329,14 @@
     syncOffset();
     if(nativeSidebarActive(page)){ standDown(page); return; }
     const sections = sectionsOf(page);
-    const signature = signatureOf(page);
-    let sidebar = page.querySelector('.' + C.sidebar);
 
     // 区块不足两项（例如日志页只有一个视图）就不给侧栏，页面保持单栏
-    if(sections.length < MIN_SECTIONS){
-      if(sidebar) sidebar.remove();
-      page.classList.remove(C.on, C.collapsed);
-      delete page.dataset.wbpnSignature;
-      return;
-    }
-    // 清单没变就不动 DOM，保留现有高亮
+    if(sections.length < MIN_SECTIONS){ standDown(page); return; }
+
+    const signature = signatureOf(page);
+    let sidebar = page.querySelector('.' + C.sidebar);
+    // 清单没变就不动 DOM，保留现有高亮（加宽要先于这个早退，否则会漏掉）
+    syncWide(page, true);
     if(sidebar && page.dataset.wbpnSignature === signature) return;
 
     const taken = new Set(Array.from(document.querySelectorAll('[id]')).map(el => el.id));
