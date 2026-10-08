@@ -5,7 +5,8 @@
   "description": "为 workbuddy2api-hub 面板恢复「本页区块导航」侧栏的用户脚本",
   "scripts": {
     "verify": "node verify/verify.mjs",
-    "verify:real": "node verify/verify.mjs --page real"
+    "verify:real": "node verify/verify.mjs --page real",
+    "verify:live": "node verify/verify-live.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"
