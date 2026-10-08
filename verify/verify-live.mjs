@@ -68,6 +68,21 @@ const SOUNDNESS = () => {
   });
 };
 
+/* 页面侧：主区域宽度与横向溢出。侧栏占了 196px 一列，如果内容区还卡在面板
+   原来的 max-width:1280px，最宽的表（账号表）就会冒出横向滚动条、右侧列被藏起来。 */
+const OVERFLOW = () => {
+  const page = document.querySelector('.main-page.active');
+  const main = page && page.closest('main');
+  const wraps = page ? Array.from(page.querySelectorAll('.table-wrap')) : [];
+  return {
+    wideClass: !!(main && main.classList.contains('wbpn-wide')),
+    mainMaxWidth: main ? getComputedStyle(main).maxWidth : null,
+    pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    tableOverflow: wraps.map(w => Math.round(w.scrollWidth - w.clientWidth)),
+    worst: wraps.length ? Math.max(...wraps.map(w => w.scrollWidth - w.clientWidth)) : 0,
+  };
+};
+
 async function switchTab(page, name){
   await page.click('#btnNav' + name[0].toUpperCase() + name.slice(1));
   await page.waitForTimeout(700);   // 去抖 200ms + 面板自己加载数据
@@ -151,6 +166,15 @@ async function main(){
   check('页面内可导航区块一个不漏', eq(eligible, s.labels),
     '页面里有=' + JSON.stringify(eligible) + ' 导航里=' + JSON.stringify(s.labels));
 
+  /* 2b. 侧栏占了 196px 一列，内容区必须跟着放松面板的 max-width:1280px，
+         否则最宽的表会出横向滚动条、右侧列被藏起来（用户报的就是这个）。 */
+  const of = await page.evaluate(OVERFLOW);
+  console.log('        内容区 max-width=' + of.mainMaxWidth + '，最宽的表横向溢出 ' + of.worst + 'px');
+  check('侧栏在场时放松了内容区宽度上限', of.wideClass && of.mainMaxWidth !== '1280px',
+    'wide=' + of.wideClass + ' max-width=' + of.mainMaxWidth);
+  check('侧栏在场时没有横向滚动条（页面与各表）',
+    of.pageOverflow <= 1 && of.tableOverflow.every(n => n <= 1), JSON.stringify(of));
+
   await page.screenshot({ path: path.join(SHOTS, 'live-01-gateway.png') });
 
   /* 3. 点击跳转 */
@@ -222,12 +246,17 @@ async function main(){
     s = await page.evaluate(SIDEBAR_STATE);
     const want = await page.evaluate(ELIGIBLE);
     console.log('        ' + tab + '：' + JSON.stringify(s.labels));
+    const ofTab = await page.evaluate(OVERFLOW);
     if(want.length >= 2){
       check('切到 ' + tab + '：侧栏存在且清单与页面区块一致',
         s.hasSidebar && s.on && eq(s.labels, want),
         'has=' + s.hasSidebar + ' 导航=' + JSON.stringify(s.labels) + ' 页面=' + JSON.stringify(want));
+      check('切到 ' + tab + '：没有横向滚动条（max-width=' + ofTab.mainMaxWidth + '，最宽表溢出 ' + ofTab.worst + 'px）',
+        ofTab.wideClass && ofTab.pageOverflow <= 1 && ofTab.tableOverflow.every(n => n <= 1),
+        JSON.stringify(ofTab));
     } else {
       check('切到 ' + tab + '：区块不足两项，不给侧栏', !s.hasSidebar && !s.on, JSON.stringify(s));
+      check('切到 ' + tab + '：内容区宽度上限保持面板原样', !ofTab.wideClass, JSON.stringify(ofTab));
     }
   }
   await switchTab(page, 'settings');

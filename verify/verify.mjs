@@ -43,6 +43,20 @@ const EXPECT = {
 
 const { check, report, results } = makeChecker();
 
+/* 页面侧：主区域宽度与横向溢出。面板把内容区卡在 max-width:1280px，侧栏一来
+   内容列就不够宽，最宽的表会冒出横向滚动条、右侧列被藏起来 —— 这条断言盯的就是它。 */
+const OVERFLOW = () => {
+  const page = document.querySelector('.main-page.active');
+  const main = page && page.closest('main');
+  const wraps = page ? Array.from(page.querySelectorAll('.table-wrap')) : [];
+  return {
+    wideClass: !!(main && main.classList.contains('wbpn-wide')),
+    mainMaxWidth: main ? getComputedStyle(main).maxWidth : null,
+    pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    tableOverflow: wraps.map(w => Math.round(w.scrollWidth - w.clientWidth)),
+  };
+};
+
 
 
 async function fetchReal(){
@@ -116,6 +130,15 @@ async function main(){
   check('侧栏含收起按钮', s.hasToggle);
   check('侧栏已占宽（非 0）', s.sidebarWidth > 100, s.sidebarWidth + 'px');
   check('默认高亮第一项', s.active === expected.gateway[0], 'active=' + s.active);
+
+  /* 1a. 侧栏占了 196px 一列，内容区必须跟着放松宽度上限，否则最宽的表会出横向
+         滚动条、右侧列被藏起来（用户报的就是这个）。 */
+  const of = await page.evaluate(OVERFLOW);
+  check('侧栏在场时放松了内容区宽度上限', of.wideClass && of.mainMaxWidth !== '1280px',
+    'wide=' + of.wideClass + ' max-width=' + of.mainMaxWidth);
+  check('侧栏在场时没有横向滚动条（页面与各表）',
+    of.pageOverflow <= 1 && of.tableOverflow.every(n => n <= 1),
+    JSON.stringify(of));
 
   await page.screenshot({ path: path.join(SHOTS, '01-gateway.png') });
 
@@ -217,6 +240,9 @@ async function main(){
         'has=' + s.hasSidebar + ' got=' + JSON.stringify(s.labels) + ' want=' + JSON.stringify(want));
     } else {
       check('切到 ' + tab + '：区块不足两项，不给侧栏', !s.hasSidebar && !s.on, JSON.stringify(s));
+      // 没有侧栏的页面不该被加宽，保持面板原样
+      check('切到 ' + tab + '：内容区宽度上限保持面板原样', !(await page.evaluate(OVERFLOW)).wideClass,
+        JSON.stringify(await page.evaluate(OVERFLOW)));
     }
   }
   await switchTab(page, 'settings');
@@ -259,11 +285,13 @@ async function main(){
   check('面板自带侧栏可用时脚本让位（不留自己的侧栏）',
     standDown.fakeVisible && standDown.ownSidebars === 0 && !standDown.on, JSON.stringify(standDown));
   check('让位时撤掉自己包的内容容器', standDown.ownBodies === 0, JSON.stringify(standDown));
+  check('让位时还原内容区宽度上限', !(await page.evaluate(OVERFLOW)).wideClass, JSON.stringify(await page.evaluate(OVERFLOW)));
 
   await page.evaluate(() => document.getElementById('wbpnFakeNative').remove());
   await page.waitForTimeout(500);
   s = await page.evaluate(SIDEBAR_STATE);
   check('自带侧栏消失后脚本重新接管', s.hasSidebar && s.on && eq(s.labels, expected.gateway), JSON.stringify(s));
+  check('重新接管后内容区宽度上限又放松回来', (await page.evaluate(OVERFLOW)).wideClass);
 
   /* 9. 窄屏回退：横向胶囊行 */
   await page.setViewportSize({ width: 760, height: 900 });
