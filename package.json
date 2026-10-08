@@ -1,0 +1,14 @@
+{
+  "name": "wb2api-hub-sidebar-nav",
+  "version": "1.0.0",
+  "private": true,
+  "description": "为 workbuddy2api-hub 面板恢复「本页区块导航」侧栏的用户脚本",
+  "scripts": {
+    "verify": "node verify/verify.mjs",
+    "verify:real": "node verify/verify.mjs --page real"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  },
+  "license": "MIT"
+}
