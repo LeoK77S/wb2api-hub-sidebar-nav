@@ -119,6 +119,22 @@ async function main(){
 
   await page.screenshot({ path: path.join(SHOTS, '01-gateway.png') });
 
+  /* 1b. 宿主面板的全局 button 样式不能漏进侧栏按钮：悬停态要由本脚本决定，
+        不该无端带上面板实心按钮那层阴影/描边。 */
+  const styleOf = async label => page.evaluate(l => {
+    const btn = Array.from(document.querySelectorAll('.main-page.active .wbpn-item'))
+      .find(b => b.textContent === l);
+    const cs = getComputedStyle(btn);
+    return { borderColor: cs.borderColor, boxShadow: cs.boxShadow };
+  }, label);
+  await page.hover(`.main-page.active .wbpn-item:text-is("${expected.gateway[1]}")`);
+  await page.waitForTimeout(150);
+  const hovered = await styleOf(expected.gateway[1]);
+  const idle = await styleOf(expected.gateway[2]);
+  check('悬停态由脚本自己的规则决定（有描边、无面板阴影）',
+    hovered.borderColor !== idle.borderColor && hovered.boxShadow === 'none',
+    JSON.stringify({ hovered, idle }));
+
   /* 2. 点击导航项：滚到该区块并把高亮交给它 */
   const second = expected.gateway[1];
   await clickNav(page, second);
