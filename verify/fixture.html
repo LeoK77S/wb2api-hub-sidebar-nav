@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>wb2api-hub 侧栏导航 · 离线夹具</title>
+<!--
+  面板结构的最小复刻，用来在无网络、无后端时验证油猴脚本。
+  刻意包含真实面板里没有的边界：嵌套 section、没有 h2 的 section、
+  只有单个 section 的页面 —— 这些正是「静默少一项 / 点了没反应」的来源。
+  区块清单与 verify.mjs 里的 EXPECT_FIXTURE 一一对应。
+-->
+<style>
+:root{
+  --bg:#0b0f19; --panel:#111827; --panel2:#1e293b; --panel3:#334155;
+  --line:#1f293d; --line-hover:#334155; --fg:#f1f5f9; --dim:#94a3b8;
+  --accent:#3b82f6; --accent2:#22c55e;
+  --shadow:0 1px 3px 0 rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif}
+header{position:sticky;top:0;z-index:20;background:var(--panel);border-bottom:1px solid var(--line);
+  padding:12px 24px;display:flex;gap:8px;align-items:center}
+header button{background:transparent;border:1px solid transparent;color:var(--dim);padding:6px 14px;
+  border-radius:8px;font:inherit;cursor:pointer}
+header button.active{background:var(--panel2);border-color:var(--line);color:var(--fg);font-weight:600}
+main{padding:24px 24px 60px;max-width:1280px;margin:0 auto}
+.main-page{display:none}
+.main-page.active{display:block}
+section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;
+  margin-bottom:16px;box-shadow:var(--shadow)}
+section h2{font-size:16px;margin:0 0 10px}
+section h2 em{font-style:normal;color:var(--dim);font-size:12px;margin-left:6px}
+.fill{height:340px;background:repeating-linear-gradient(45deg,var(--panel2) 0 10px,transparent 10px 20px);
+  border-radius:8px}
+</style>
+</head>
+<body>
+<header>
+  <strong>wb2api-hub</strong>
+  <button id="btnNavGateway" class="active" data-tab="gateway">网关</button>
+  <button id="btnNavAnalytics" data-tab="analytics">分析</button>
+  <button id="btnNavLogs" data-tab="logs">日志</button>
+  <button id="btnNavSettings" data-tab="settings">设置</button>
+</header>
+
+<main>
+  <!-- 网关页：3 个可导航区块 + 1 个隐藏区块 + 1 个无标题区块 + 1 个嵌套区块 -->
+  <div id="pageGateway" class="main-page active">
+    <section>
+      <h2>账号 <em id="acctCount"></em></h2>
+      <div class="fill"></div>
+      <section>
+        <h2>账号详情（嵌套，不应单独成项）</h2>
+        <div class="fill"></div>
+      </section>
+    </section>
+    <section>
+      <h2>最近请求 <em id="recentCount">(3)</em></h2>
+      <div class="fill"></div>
+    </section>
+    <section>
+      <h2>模型清单</h2>
+      <div class="fill"></div>
+    </section>
+    <section id="sectionGrowthTasks" style="display:none">
+      <h2>国内版成长任务（隐藏，不应成项）</h2>
+      <div class="fill"></div>
+    </section>
+    <section>
+      <p>这个区块没有 h2，不应成项。</p>
+      <div class="fill"></div>
+    </section>
+  </div>
+
+  <!-- 分析页：2 个区块，刚好够开侧栏 -->
+  <div id="pageAnalytics" class="main-page">
+    <section>
+      <h2>Token 时序 <em id="seriesRange" style="font-style:normal"></em></h2>
+      <div class="fill"></div>
+    </section>
+    <section>
+      <h2>积分扣减历史</h2>
+      <div class="fill"></div>
+    </section>
+  </div>
+
+  <!-- 日志页：只有一个区块，不该有侧栏 -->
+  <div id="pageLogs" class="main-page">
+    <section>
+      <h2>运行日志</h2>
+      <div class="fill"></div>
+    </section>
+  </div>
+
+  <!-- 设置页：5 个区块，验证较长清单 -->
+  <div id="pageSettings" class="main-page">
+    <section><h2>面板访问密码 <em></em></h2><div class="fill"></div></section>
+    <section><h2>API Key 与出口绑定</h2><div class="fill"></div></section>
+    <section><h2>代理槽</h2><div class="fill"></div></section>
+    <section><h2>限额</h2><div class="fill"></div></section>
+    <section><h2>运行信息</h2><div class="fill"></div></section>
+  </div>
+</main>
+
+<script>
+/* 面板的切页逻辑：给 .main-page 换 .active，并同步按钮高亮 */
+function switchMainTab(tab){
+  ['gateway', 'analytics', 'logs', 'settings'].forEach(function(name){
+    const btn = document.getElementById('btnNav' + name[0].toUpperCase() + name.slice(1));
+    const page = document.getElementById('page' + name[0].toUpperCase() + name.slice(1));
+    const on = name === tab;
+    if(btn) btn.classList.toggle('active', on);
+    if(page) page.classList.toggle('active', on);
+  });
+}
+document.querySelectorAll('header button[data-tab]').forEach(function(btn){
+  btn.addEventListener('click', function(){ switchMainTab(btn.dataset.tab); });
+});
+</script>
+</body>
+</html>
